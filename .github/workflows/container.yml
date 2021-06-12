@@ -37,7 +37,7 @@ jobs:
           path: /tmp/.buildx-cache
           key: ${{ runner.os }}-${{ hashFiles('Dockerfile', 'Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-${{ hashFiles('Dockerfile', 'Cargo.lock') }}
+            ${{ runner.os }}-
 
       - name: Get the version
         id: get_version
