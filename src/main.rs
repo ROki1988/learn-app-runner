@@ -80,7 +80,7 @@ async fn serve_forever(listener: TcpListener) -> Result<(), warp::hyper::Error> 
 pub fn get() -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
     warp::get()
         .and(path!(String))
-        .map(|path: String| Response::new(Body::from(path)))
+        .map(|path: String| Response::new(Body::from("hello ".to_owned() + &path)))
 }
 
 pub fn error() -> impl Filter<Extract = (&'static str,), Error = Rejection> + Clone {
