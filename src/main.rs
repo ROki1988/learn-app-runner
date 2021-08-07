@@ -1,11 +1,14 @@
 use anyhow::Result;
 use axum::prelude::*;
 use bytes::Bytes;
-use http::{header, HeaderValue, Uri};
+use http::{header, HeaderValue, StatusCode};
+use std::borrow::Cow;
+use std::convert::Infallible;
 use std::net::SocketAddr;
 use std::time::Duration;
 use structopt::StructOpt;
-use tower::ServiceBuilder;
+use tokio::time::error::Elapsed;
+use tower::{BoxError, ServiceBuilder};
 use tower_http::compression::CompressionLayer;
 use tower_http::sensitive_headers::SetSensitiveHeadersLayer;
 use tower_http::set_header::SetResponseHeaderLayer;
@@ -44,24 +47,6 @@ async fn serve_forever(addr: SocketAddr) -> Result<()> {
                 })
         )
         .timeout(Duration::from_secs(10))
-        // .handle_error(|error: BoxError| {
-        //     // Check if the actual error type is `Elapsed` which
-        //     // `Timeout` returns
-        //     if error.is::<Elapsed>() {
-        //         return Ok::<_, Infallible>((
-        //             StatusCode::REQUEST_TIMEOUT,
-        //             "Request took too long".into(),
-        //         ));
-        //     }
-        //
-        //     // If we encounter some error we don't handle return a generic
-        //     // error
-        //     return Ok::<_, Infallible>((
-        //         StatusCode::INTERNAL_SERVER_ERROR,
-        //         // `Cow` lets us return either `&str` or `String`
-        //         Cow::from(format!("Unhandled internal error: {}", error)),
-        //     ));
-        // })
         .layer(CompressionLayer::new())
         .layer(SetResponseHeaderLayer::<_, Request<Body>>::if_not_present(
             header::CONTENT_TYPE,
@@ -73,7 +58,26 @@ async fn serve_forever(addr: SocketAddr) -> Result<()> {
         ]))
         .into_inner();
 
-    let routes = route("/:name", get(hello)).layer(middleware_stack);
+    let routes = route("/:name", get(hello))
+        .layer(middleware_stack)
+        .handle_error(|error: BoxError| {
+            // Check if the actual error type is `Elapsed` which
+            // `Timeout` returns
+            if error.is::<Elapsed>() {
+                return Ok::<_, Infallible>((
+                    StatusCode::REQUEST_TIMEOUT,
+                    Cow::from("Request took too long".to_owned()),
+                ));
+            }
+
+            // If we encounter some error we don't handle return a generic
+            // error
+            return Ok::<_, Infallible>((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                // `Cow` lets us return either `&str` or `String`
+                Cow::from(format!("Unhandled internal error: {}", error)),
+            ));
+        });
 
     tracing::info!("Listening on {}", addr);
 
@@ -84,6 +88,6 @@ async fn serve_forever(addr: SocketAddr) -> Result<()> {
     Ok(())
 }
 
-async fn hello(uri: Uri) -> String {
-    format!("hello {}", uri.path())
+async fn hello(params: extract::UrlParams<(String,)>) -> String {
+    format!("hello {}", (params.0).0)
 }
